@@ -1,4 +1,17 @@
-app
+# Executabil
+pacman
+
+# Fisiere compilate
+*.o
 *.out
 *.dSYM
+
+# macOS
 .DS_Store
+.AppleDouble
+.LSOverride
+
+# Editor
+*.save
+*~
+.vscode/
