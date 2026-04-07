@@ -55,6 +55,7 @@ char **create_table() {
     create_maze(table) ; 
     table [14][48]=CHERRY ; 
     table [13][1]=CHERRY ; 
+    table [1][1]=EMPTY ; 
  return table ; 
 }
 
@@ -71,5 +72,5 @@ void print_table(char **table){
 void free_table(char **table) {
   for(int i=0 ; i<SIZE_lin ; i++) 
     free(table[i]) ; 
-    free(table) ; 
+  free(table) ; 
 }
