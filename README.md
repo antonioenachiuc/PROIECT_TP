@@ -8,7 +8,7 @@ Deocamdata proiectul include mișcarea personajului, coliziuni, sistem de scor �
 * Mișcarea lui Pac-Man
 * Detecția coliziunilor cu pereții
 * Sistem de scor (crește când sunt colectate puncte)
-* Miscarea Fantomelor + Coliziunea cu Pac-Man 
+* Miscarea Fantomelor + Coliziunea cu Pac-Man
 
 ## Build
 
