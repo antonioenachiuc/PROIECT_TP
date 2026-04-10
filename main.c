@@ -29,6 +29,8 @@ struct ENTITY {
     uint32_t last_move_time ; 
     int next_dx ; 
     int next_dy ; 
+    bool power_up ; 
+    uint32_t power_up_timer ; 
 } ; 
 
 struct Game {
@@ -36,6 +38,7 @@ struct Game {
    SDL_Renderer *renderer ; 
    SDL_Texture *Ghost_Texture ; 
    SDL_Texture *Pacman_icon ; 
+   SDL_Texture *Pacman_icon1 ; 
    SDL_Texture *Cherry_Texture ;
    TTF_Font *Text_Font ;  
    SDL_Color Text_Color ; 
@@ -72,14 +75,15 @@ int main (void) {
     game.renderer=NULL ; 
     game.Ghost_Texture=NULL ; 
     game.Pacman_icon=NULL ; 
+    game.Pacman_icon1=NULL ; 
     game.Cherry_Texture=NULL ; 
     game.Text_Font=NULL ; 
-    game.Text_Color=(SDL_Color){255,255,255,255} ; 
+    game.Text_Color=(SDL_Color){200,0,255,255} ; 
     game.Score_Texture=NULL ; 
     game.score=0 ; 
-    game.PACMAN=(struct ENTITY){1,1,1,0,0,0,0} ; 
-    game.GHOST[0]=(struct ENTITY){16,10,0,-1,0,0,0} ; 
-    game.GHOST[1]=(struct ENTITY){16,39,0,+1,0,0,0} ; 
+    game.PACMAN=(struct ENTITY){1,1,1,0,0,0,0,false,0} ; 
+    game.GHOST[0]=(struct ENTITY){16,10,0,-1,0,0,0,false,0} ; 
+    game.GHOST[1]=(struct ENTITY){16,39,0,+1,0,0,0,false,0} ;  
     game.Game_Over_Texture=NULL ; 
     game.Game_Over=false ; 
 
@@ -151,10 +155,26 @@ int main (void) {
      update_poz_ghost(&game , table) ; 
      draw_map(&game , table) ; 
      } 
-     else {
-         SDL_SetRenderDrawColor(game.renderer, 0, 206, 209, 255);
+     else { 
+         if(!game.PACMAN.power_up){
+         SDL_SetRenderDrawColor(game.renderer, 120, 0, 0, 255);
          SDL_RenderFillRect(game.renderer, &game.Game_Over_Rect);
-         SDL_RenderCopy(game.renderer , game.Game_Over_Texture, NULL , &game.Game_Over_Rect);
+         SDL_RenderCopy(game.renderer , game.Game_Over_Texture, NULL , &game.Game_Over_Rect); 
+         }
+         else {
+            if (game.GHOST[0].lin == game.PACMAN.lin && game.GHOST[0].col == game.PACMAN.col){
+               game.GHOST[0].lin=16 ; 
+               game.GHOST[0].col=10 ; 
+            }
+            else {
+               game.GHOST[1].lin=16 ; 
+               game.GHOST[1].col=39  ; 
+            }
+            game.score+=100 ; 
+            update_poz_pacman(&game , table) ; 
+            update_poz_ghost(&game , table) ; 
+            draw_map(&game , table) ;  
+         }  
      }    
 
      SDL_RenderPresent(game.renderer) ; 
@@ -214,6 +234,10 @@ void game_cleanup(struct Game *game) {
         SDL_DestroyTexture(game->Cherry_Texture) ; 
         game->Cherry_Texture=NULL ; 
     }
+   if(game->Pacman_icon1!=NULL) {
+        SDL_DestroyTexture(game->Pacman_icon1) ; 
+        game->Pacman_icon1=NULL ; 
+    }
    if(game->Pacman_icon!=NULL) {
         SDL_DestroyTexture(game->Pacman_icon) ; 
         game->Pacman_icon=NULL ; 
@@ -270,9 +294,13 @@ void draw_map(struct Game *game , char **table){
             break ; 
        }
        
-      
+       bool open_mouth = ((SDL_GetTicks() / 100 ) % 2 ==0) ; 
+
        if (i == game->PACMAN.lin && j == game->PACMAN.col) {
+         if(open_mouth)
          SDL_RenderCopy(game->renderer, game->Pacman_icon, NULL, &cel);
+         else 
+         SDL_RenderCopy(game->renderer, game->Pacman_icon1, NULL, &cel);
          }
 
       for (int g = 0; g < 2; g++) {
@@ -293,9 +321,14 @@ bool load_media(struct Game *game) {
     fprintf(stderr, "NU S-A PUTUT CREA TEXTURA FANTOMELOR . MOTIVUL : %s \n" , IMG_GetError()) ; 
      return false ; 
   }
-  game->Pacman_icon=IMG_LoadTexture(game->renderer , "Images_PACMAN/PACMAN.png");
-  if(!game->Pacman_icon) {
+  game->Pacman_icon1=IMG_LoadTexture(game->renderer , "Images_PACMAN/PACMAN_GURA_INCHISA.png");
+  if(!game->Pacman_icon1) {
     fprintf(stderr, "NU S-A PUTUT CREA TEXTURA LUI PACMAN . MOTIVUL : %s \n" , IMG_GetError()) ; 
+     return false ; 
+  }
+  game->Pacman_icon=IMG_LoadTexture(game->renderer , "Images_PACMAN/PACMAN_GURA_DESCHISA.png");
+  if(!game->Pacman_icon) {
+    fprintf(stderr, "NU S-A PUTUT CREA TEXTURA PACMAN . MOTIVUL : %s \n" , IMG_GetError()) ; 
      return false ; 
   }
    game->Cherry_Texture=IMG_LoadTexture(game->renderer , "Images_PACMAN/CHERRY.png");
@@ -303,7 +336,7 @@ bool load_media(struct Game *game) {
     fprintf(stderr, "NU S-A PUTUT CREA TEXTURA CIRESELOR . MOTIVUL : %s \n" , IMG_GetError()) ; 
      return false ; 
   }
-   game->Text_Font = TTF_OpenFont("Font_txt/Arial.ttf" , TEXT_SIZE) ;
+   game->Text_Font = TTF_OpenFont("Font_txt/PressStart2P.ttf" , TEXT_SIZE) ;
    if(!game->Text_Font) {
        fprintf(stderr, "NU S-A PUTUT CREA FONTUL DE TEXT . MOTIVUL : %s \n" , TTF_GetError()) ; 
         return false ; 
@@ -381,6 +414,20 @@ void update_poz_pacman(struct Game *game, char **table){
     table[next_lin][next_col]=EMPTY ; 
     load_score_texture(game) ; 
   }
+   
+   uint32_t timer = SDL_GetTicks() ; 
+
+   if(table[next_lin][next_col]==CHERRY) {
+      game->PACMAN.power_up = true ; 
+      game->PACMAN.power_up_timer=timer ; 
+      table[next_lin][next_col]=EMPTY ;
+   }
+
+   if(game->PACMAN.power_up==true && timer - game->PACMAN.power_up_timer > 10000) {
+      game->PACMAN.power_up=false ; 
+      game->PACMAN.power_up_timer=0 ; 
+   }
+      
   
    if(verify==true ) {
       game->PACMAN.dx=game->PACMAN.next_dx ; 
@@ -393,24 +440,27 @@ void update_poz_pacman(struct Game *game, char **table){
 }
 void update_poz_ghost(struct Game *game , char **table) {
    uint32_t current_time ; 
-  current_time = SDL_GetTicks() ; 
-
-  if(current_time-game->GHOST[0].last_move_time<100) {
-    return ; 
-  }
-
-   game->GHOST[0].last_move_time=current_time ; 
-
    int out_dlin , out_dcol ; 
    
-   BFS_next_step(table , game->GHOST[0].lin , game->GHOST[0].col , game->PACMAN.lin , game->PACMAN.col , &out_dlin , &out_dcol) ; 
-   game->GHOST[0].lin +=out_dlin ; 
-   game->GHOST[0].col +=out_dcol ; 
+   current_time = SDL_GetTicks() ; 
+
+  if(!(current_time-game->GHOST[0].last_move_time<110)) {
+    game->GHOST[0].last_move_time=current_time ; 
    
-  
-   BFS_next_step(table , game->GHOST[1].lin , game->GHOST[1].col , game->PACMAN.lin , game->PACMAN.col , &out_dlin , &out_dcol) ; 
-   game->GHOST[1].lin +=out_dlin ; 
-   game->GHOST[1].col +=out_dcol ; 
+      BFS_next_step(table , game->GHOST[0].lin , game->GHOST[0].col , game->PACMAN.lin , game->PACMAN.col , &out_dlin , &out_dcol) ; 
+      game->GHOST[0].lin +=out_dlin ; 
+      game->GHOST[0].col +=out_dcol ;  
+  }
+   
+   current_time = SDL_GetTicks() ; 
+   
+   if(!(current_time-game->GHOST[1].last_move_time<130)) {
+    game->GHOST[1].last_move_time=current_time ; 
+      
+      BFS_next_step(table , game->GHOST[1].lin , game->GHOST[1].col , game->PACMAN.lin , game->PACMAN.col  , &out_dlin , &out_dcol) ; 
+      game->GHOST[1].lin +=out_dlin ; 
+      game->GHOST[1].col +=out_dcol ; 
+  }
    
    
 }
@@ -418,7 +468,7 @@ void update_poz_ghost(struct Game *game , char **table) {
 void BFS_next_step(char **table , int ghost_line , int ghost_col , int pacman_line , int pacman_col , int *out_dlin , int *out_dcol) {
     int dir[4][2] = {{-1,0} , {+1,0} , {0,+1} , {0,-1}} ; 
     int visited[SIZE_lin][SIZE_col]={0} ; 
-    int parent_lin[SIZE_lin][SIZE_col]={0} , parent_col[SIZE_lin][SIZE_col]={0};  
+    int parent_lin[SIZE_lin][SIZE_col] , parent_col[SIZE_lin][SIZE_col];  
     int queue_lin[SIZE_lin*SIZE_col] , queue_col[SIZE_lin*SIZE_col]  ; 
     int head=0 , tail=0 ; 
 
@@ -495,10 +545,10 @@ void BFS_next_step(char **table , int ghost_line , int ghost_col , int pacman_li
          return false; 
       }                       
                                                                                                       
-      game->Game_Over_Rect.w = surface->w;
-      game->Game_Over_Rect.h = surface->h;                                                            
-      game->Game_Over_Rect.x = (SCREEN_WIDTH - surface->w) / 2;   // centrat                        
-      game->Game_Over_Rect.y = (SCREEN_HEIGHT - surface->h) / 2;                                      
+      game->Game_Over_Rect.w = surface->w*3;
+      game->Game_Over_Rect.h = surface->h*3;                                                            
+      game->Game_Over_Rect.x = (SCREEN_WIDTH - surface->w*3) / 2 ;   // centrat                        
+      game->Game_Over_Rect.y = (SCREEN_HEIGHT - surface->h*3) / 2;                                      
       SDL_FreeSurface(surface);                                                                       
       return true;                                                                                    
   }                                                                                                   

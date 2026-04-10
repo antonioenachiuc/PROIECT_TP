@@ -55,7 +55,6 @@ char **create_table() {
     create_maze(table) ; 
     table [14][48]=CHERRY ; 
     table [13][1]=CHERRY ; 
-    table [1][1]=EMPTY ; 
  return table ; 
 }
 
