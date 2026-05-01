@@ -10,6 +10,8 @@ Deocamdata proiectul include mișcarea personajului, coliziuni, sistem de scor �
 * Sistem de scor (crește când sunt colectate puncte)
 * Miscarea Fantomelor + Coliziunea cu Pac-Man
 * Power-up Cirese 
+* Timer pentru Power-up 
+* Functie de Restart
 
 ## Build
 

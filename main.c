@@ -47,9 +47,16 @@ struct Game {
    SDL_Rect Score_Rect ; 
    int score ; 
 
+   SDL_Texture *Power_Up_Timer_Texture ; 
+   SDL_Rect Power_Up_Timer_Rect ; 
+
    SDL_Texture *Game_Over_Texture ; 
    SDL_Rect Game_Over_Rect ; 
    bool Game_Over ; 
+
+   SDL_Texture *Restart_Button ; 
+   SDL_Rect Restart_Button_Rect ; 
+
 
    struct ENTITY PACMAN ; 
    struct ENTITY GHOST[2] ; 
@@ -66,6 +73,8 @@ void update_poz_ghost(struct Game *game , char **table) ;
 void BFS_next_step(char **table , int ghost_line , int ghost_col , int pacman_line , int pacman_col , int *out_dlin , int *out_dcol) ; 
 bool load_game_over_texture(struct Game *game) ; 
 bool check_colision(struct Game *game) ;
+bool Restart_Game(struct Game *game , char ***table) ; 
+void Print_Timer_Power_Up (struct Game *game , uint32_t time) ; 
 
 int main (void) {
     struct Game game ; 
@@ -86,6 +95,8 @@ int main (void) {
     game.GHOST[1]=(struct ENTITY){16,39,0,+1,0,0,0,false,0} ;  
     game.Game_Over_Texture=NULL ; 
     game.Game_Over=false ; 
+    game.Restart_Button=NULL ; 
+    game.Power_Up_Timer_Texture=NULL ; 
 
     if(!sdl_initialize(&game)){
        game_cleanup(&game) ; 
@@ -136,6 +147,32 @@ int main (void) {
                   game.PACMAN.next_dx=-1 ; 
                   game.PACMAN.next_dy=0 ;
                   break ; 
+                case SDL_SCANCODE_W :
+                  game.PACMAN.next_dx=0 ; 
+                  game.PACMAN.next_dy=-1 ; 
+                  break ; 
+                case SDL_SCANCODE_S : 
+                  game.PACMAN.next_dx=0 ; 
+                  game.PACMAN.next_dy=+1 ;
+                  break ; 
+                case SDL_SCANCODE_D : 
+                  game.PACMAN.next_dx=+1 ; 
+                  game.PACMAN.next_dy=0 ;
+                  break ; 
+                case SDL_SCANCODE_A :
+                  game.PACMAN.next_dx=-1 ; 
+                  game.PACMAN.next_dy=0 ;
+                  break ; 
+                case SDL_SCANCODE_SPACE :
+                  if(game.Game_Over) {
+                     bool OK=Restart_Game(&game , &table) ; 
+                     if(!OK) {
+                        fprintf(stderr , "CEVA NU A MERS BINE \n") ; 
+                        return 1 ; 
+                     }
+                     break ; 
+                  }
+                  break ; 
                 default:
                     break ; 
 
@@ -160,6 +197,8 @@ int main (void) {
          SDL_SetRenderDrawColor(game.renderer, 120, 0, 0, 255);
          SDL_RenderFillRect(game.renderer, &game.Game_Over_Rect);
          SDL_RenderCopy(game.renderer , game.Game_Over_Texture, NULL , &game.Game_Over_Rect); 
+         SDL_RenderFillRect(game.renderer, &game.Restart_Button_Rect);
+         SDL_RenderCopy(game.renderer , game.Restart_Button, NULL , &game.Restart_Button_Rect); 
          }
          else {
             if (game.GHOST[0].lin == game.PACMAN.lin && game.GHOST[0].col == game.PACMAN.col){
@@ -218,6 +257,14 @@ bool sdl_initialize (struct Game *game) {
 }
 
 void game_cleanup(struct Game *game) {
+   if(game->Power_Up_Timer_Texture!=NULL){
+      SDL_DestroyTexture(game->Power_Up_Timer_Texture) ; 
+      game->Power_Up_Timer_Texture=NULL ;
+   }
+   if(game->Restart_Button!=NULL) {
+      SDL_DestroyTexture(game->Restart_Button) ; 
+      game->Restart_Button=NULL ; 
+   }
    if(game->Game_Over_Texture!=NULL) {
       SDL_DestroyTexture(game->Game_Over_Texture) ; 
       game->Game_Over_Texture=NULL ; 
@@ -314,6 +361,13 @@ void draw_map(struct Game *game , char **table){
    SDL_SetRenderDrawColor(game->renderer, 0, 0, 0, 255);
    SDL_RenderFillRect(game->renderer, &game->Score_Rect);
    SDL_RenderCopy(game->renderer , game->Score_Texture , NULL , &game->Score_Rect);
+
+   if(game->PACMAN.power_up && game->Power_Up_Timer_Texture != NULL) {                                 
+     SDL_SetRenderDrawColor(game->renderer, 0, 0, 0, 255);                                            
+     SDL_RenderFillRect(game->renderer, &game->Power_Up_Timer_Rect);                                  
+     SDL_RenderCopy(game->renderer , game->Power_Up_Timer_Texture , NULL ,                            
+  &game->Power_Up_Timer_Rect);                                            
+  } 
 }
 bool load_media(struct Game *game) {
   game->Ghost_Texture=IMG_LoadTexture(game->renderer , "Images_PACMAN/ghost_pacman.png");
@@ -388,6 +442,21 @@ void update_poz_pacman(struct Game *game, char **table){
   }
 
   game->PACMAN.last_move_time=current_time ; 
+  uint32_t timer = SDL_GetTicks() ; 
+
+  if(game->PACMAN.power_up==true && timer - game->PACMAN.power_up_timer > 10000) {
+      game->PACMAN.power_up=false ; 
+      game->PACMAN.power_up_timer=0 ; 
+   }
+
+   if(game->PACMAN.power_up) {
+      if(game->Power_Up_Timer_Texture != NULL) {                                                        
+         SDL_DestroyTexture(game->Power_Up_Timer_Texture) ;                                              
+         game->Power_Up_Timer_Texture = NULL ;                                                           
+      }   
+      uint32_t time=timer-game->PACMAN.power_up_timer ; 
+      Print_Timer_Power_Up(game , time) ; 
+   }
   
   if(next_lin <0 || next_lin>=SIZE_lin || next_col<0 || next_col>=SIZE_col) {
       next_lin = game->PACMAN.lin + game->PACMAN.dy ; 
@@ -415,18 +484,12 @@ void update_poz_pacman(struct Game *game, char **table){
     load_score_texture(game) ; 
   }
    
-   uint32_t timer = SDL_GetTicks() ; 
 
    if(table[next_lin][next_col]==CHERRY) {
       game->PACMAN.power_up = true ; 
       game->PACMAN.power_up_timer=timer ; 
       table[next_lin][next_col]=EMPTY ;
-   }
-
-   if(game->PACMAN.power_up==true && timer - game->PACMAN.power_up_timer > 10000) {
-      game->PACMAN.power_up=false ; 
-      game->PACMAN.power_up_timer=0 ; 
-   }
+   } 
       
   
    if(verify==true ) {
@@ -531,12 +594,17 @@ void BFS_next_step(char **table , int ghost_line , int ghost_col , int pacman_li
 }
 
   bool load_game_over_texture(struct Game *game) {
-      SDL_Surface *surface = TTF_RenderText_Blended(game->Text_Font, "GAME OVER", game->Text_Color);                                            
+      SDL_Surface *surface = TTF_RenderText_Blended(game->Text_Font, "GAME OVER", game->Text_Color); 
+      SDL_Surface *surface_Restart = TTF_RenderText_Blended(game->Text_Font, "PRESS 'SPACE' TO RESTART", (SDL_Color){255,255,255,255} );                                           
       
       if(!surface){
          fprintf(stderr , "SUPRAFATA DE GAME OVER NU A PUTUT FI GENERATA. MOTIVUL: %s \n" , TTF_GetError()) ; 
          return false ; 
-      }
+      } 
+      if(!surface_Restart){
+         fprintf(stderr , "SUPRAFATA DE RESTART NU A PUTUT FI GENERATA. MOTIVUL: %s \n" , TTF_GetError()) ; 
+         return false ; 
+      } 
                                                                                                       
       game->Game_Over_Texture = SDL_CreateTextureFromSurface(game->renderer, surface);              
       if (!game->Game_Over_Texture) { 
@@ -544,12 +612,27 @@ void BFS_next_step(char **table , int ghost_line , int ghost_col , int pacman_li
          SDL_FreeSurface(surface); 
          return false; 
       }                       
-                                                                                                      
+                   
+      game->Restart_Button = SDL_CreateTextureFromSurface(game->renderer, surface_Restart);              
+      if (!game->Restart_Button) { 
+         fprintf(stderr , "TEXTURA DE RESTART NU A PUTUT FI GENERATA. MOTIVUL: %s \n" , SDL_GetError()) ; 
+         SDL_FreeSurface(surface_Restart); 
+         SDL_FreeSurface(surface) ; 
+         return false; 
+      } 
+
       game->Game_Over_Rect.w = surface->w*3;
       game->Game_Over_Rect.h = surface->h*3;                                                            
       game->Game_Over_Rect.x = (SCREEN_WIDTH - surface->w*3) / 2 ;   // centrat                        
-      game->Game_Over_Rect.y = (SCREEN_HEIGHT - surface->h*3) / 2;                                      
-      SDL_FreeSurface(surface);                                                                       
+      game->Game_Over_Rect.y = (SCREEN_HEIGHT - surface->h*3) / 4;                                      
+      
+      game->Restart_Button_Rect.w = surface_Restart->w;
+      game->Restart_Button_Rect.h = surface_Restart->h;                                                            
+      game->Restart_Button_Rect.x = (SCREEN_WIDTH - surface_Restart->w) / 2 ;   // centrat                        
+      game->Restart_Button_Rect.y = (game->Game_Over_Rect.y + game->Game_Over_Rect.h ) + 100 ;
+      
+      SDL_FreeSurface(surface);    
+      SDL_FreeSurface(surface_Restart) ;                                                                    
       return true;                                                                                    
   }                                                                                                   
      
@@ -559,4 +642,46 @@ bool check_colision(struct Game *game) {
      if(game->GHOST[i].lin == game->PACMAN.lin && game->GHOST[i].col == game->PACMAN.col) 
        return true ; 
    return false ; 
+}
+
+bool Restart_Game(struct Game *game , char ***table) {
+   free_table(*table) ; 
+   if((*table=create_table())==NULL){
+     game_cleanup(game) ; 
+     return false ; 
+   }
+   game->Game_Over=false ; 
+   game->score=0 ; 
+   game->PACMAN = (struct ENTITY){1, 1, 1, 0, 0, 0, 0, false, 0} ;                                 
+   game->GHOST[0] = (struct ENTITY){16, 10, 0, -1, 0, 0, 0, false, 0} ;                            
+   game->GHOST[1] = (struct ENTITY){16, 39, 0, +1, 0, 0, 0, false, 0} ; 
+   load_score_texture(game) ; 
+   
+   return true ;
+}
+
+void Print_Timer_Power_Up (struct Game *game , uint32_t time) {
+   char timer[64] ; 
+   snprintf(timer , sizeof(timer) , "POWER UP TIMER:%u:%u%u", (10000-time)/1000 , (10000-time)/100%10 , (10000-time)/10%100) ; 
+
+   SDL_Surface *surface = TTF_RenderText_Blended(game->Text_Font , timer , (SDL_Color){255,255,255,255}) ; 
+
+   if(!surface) {
+      fprintf(stderr , "NU S-A PUTUT CREA SUPRAFATA PENTRU TIMER . MOTIVUL: %s " , TTF_GetError()) ;  
+      return ; 
+   }
+
+   game->Power_Up_Timer_Texture=SDL_CreateTextureFromSurface(game->renderer , surface) ;
+   if(!game->Power_Up_Timer_Texture) {
+      fprintf(stderr , "TEXTURA TIMERULUI PENTRU POWER UP NU A PUTUT FI GENERATA . MOTIVUL: %s" , SDL_GetError()); 
+      SDL_FreeSurface(surface) ; 
+      return ; 
+   }
+
+   game->Power_Up_Timer_Rect.w = surface->w/1.5 ; 
+   game->Power_Up_Timer_Rect.h = surface->h/1.5 ; 
+   game->Power_Up_Timer_Rect.x = (SCREEN_WIDTH-surface->w/1.5) ; 
+   game->Power_Up_Timer_Rect.y = surface->h-10 ; 
+
+   SDL_FreeSurface(surface) ; 
 }
